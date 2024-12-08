@@ -4,14 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.pandina.blink.ui.screens.BlinkScreen
+import com.pandina.blink.ui.screens.HomeScreen
 import com.pandina.blink.ui.theme.BlinkTheme
+import kotlinx.serialization.Serializable
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,29 +21,36 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             BlinkTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                val navController = rememberNavController()
+                NavigationComponent(navController = navController)
             }
         }
     }
 }
 
+@Serializable
+object Home
+
+@Serializable
+object Blink
+
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+fun NavigationComponent(navController: NavHostController) {
+    NavHost(navController = navController, startDestination = Home) {
+        composable<Home> {
+            HomeScreen { navController.navigate(Blink) }
+        }
+        composable<Blink> {
+            BlinkScreen { navController.popBackStack() }
+        }
+    }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun NavigationComponentPreview() {
     BlinkTheme {
-        Greeting("Android")
+        val navController = rememberNavController()
+        NavigationComponent(navController = navController)
     }
 }
