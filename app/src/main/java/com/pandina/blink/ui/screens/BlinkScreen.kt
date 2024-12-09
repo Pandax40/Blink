@@ -6,9 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,7 +59,9 @@ fun BlinkScreen(onBackClick: () -> Unit) {
                 onClick = {},
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(4.dp)
+                    .padding(horizontal = 18.dp)
+                    .padding(bottom = 8.dp)
+                    .padding(WindowInsets.navigationBars.asPaddingValues())
             ) {
                 Text(
                     text = "Blink Again",
@@ -67,6 +73,7 @@ fun BlinkScreen(onBackClick: () -> Unit) {
     ) { innerPadding ->
         Column(
             modifier = Modifier
+                .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
                 .fillMaxSize()
                 .padding(18.dp),
@@ -81,7 +88,7 @@ fun BlinkScreen(onBackClick: () -> Unit) {
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
-                Text("User Camera", modifier = Modifier.align(Alignment.Center))
+                Text("Random Camera", modifier = Modifier.align(Alignment.Center))
             }
             Spacer(modifier = Modifier.height(18.dp))
             Box(
@@ -92,7 +99,7 @@ fun BlinkScreen(onBackClick: () -> Unit) {
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
-                Text("Random Camera", modifier = Modifier.align(Alignment.Center))
+                Text("User Camera", modifier = Modifier.align(Alignment.Center))
             }
         }
     }
