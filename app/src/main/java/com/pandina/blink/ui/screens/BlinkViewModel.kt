@@ -12,10 +12,10 @@ import org.webrtc.VideoTrack
 class BlinkViewModel : ViewModel() {
     private val _remoteVideoCall = MutableStateFlow<VideoTrack?>(null)
     val remoteVideoCall: StateFlow<VideoTrack?> = _remoteVideoCall.asStateFlow()
-    private val signalingRepository  = SignalingRepository()
+    private val signalingRepository = SignalingRepository()
 
-    fun getRemoteDescription(){
-        viewModelScope.launch{
+    fun getRemoteDescription() {
+        viewModelScope.launch {
             try {
                 signalingRepository.getRemoteDescription("TEST_SPD").collect { signalingData ->
                     // Aquí puedes realizar acciones adicionales si es necesario
