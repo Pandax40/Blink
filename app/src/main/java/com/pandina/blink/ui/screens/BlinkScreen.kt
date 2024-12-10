@@ -27,15 +27,20 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import io.getstream.webrtc.android.compose.VideoRenderer
+import org.webrtc.EglBase
+import org.webrtc.RendererCommon
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BlinkScreen(onBackClick: () -> Unit) {
+fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit) {
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -56,7 +61,7 @@ fun BlinkScreen(onBackClick: () -> Unit) {
         },
         bottomBar = {
             Button(
-                onClick = {},
+                onClick = { viewModel.getRemoteDescription() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp)
@@ -88,7 +93,30 @@ fun BlinkScreen(onBackClick: () -> Unit) {
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
-                Text("Random Camera", modifier = Modifier.align(Alignment.Center))
+                val videoTrackState = viewModel.remoteVideoCall.collectAsState(null)
+                val rendererEvents = object : RendererCommon.RendererEvents {
+                    override fun onFirstFrameRendered() {
+                        // Lógica para el primer frame renderizado
+                    }
+
+                    override fun onFrameResolutionChanged(
+                        videoWidth: Int,
+                        videoHeight: Int,
+                        rotation: Int
+                    ) {
+                        // Lógica para el cambio de resolución del frame
+                    }
+                }
+                videoTrackState.value?.let { videoTrack ->
+                    VideoRenderer(
+                        videoTrack = videoTrack,
+                        eglBaseContext = EglBase.create().eglBaseContext,
+                        rendererEvents = rendererEvents,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } ?: run {
+                    Text("No video track available", modifier = Modifier.align(Alignment.Center))
+                }
             }
             Spacer(modifier = Modifier.height(18.dp))
             Box(
