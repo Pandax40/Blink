@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.stream.webrtc.android)
     implementation(libs.stream.webrtc.android.compose)
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
