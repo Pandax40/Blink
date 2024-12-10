@@ -61,7 +61,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
         },
         bottomBar = {
             Button(
-                onClick = { viewModel.getRemoteDescription() },
+                onClick = { viewModel.start() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp)

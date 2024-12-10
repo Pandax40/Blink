@@ -1,25 +1,142 @@
 package com.pandina.blink.ui.screens
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.pandina.blink.data.remote.SignalingRepository
+import com.pandina.blink.data.repository.SignalingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.webrtc.DataChannel
+import org.webrtc.DefaultVideoDecoderFactory
+import org.webrtc.DefaultVideoEncoderFactory
+import org.webrtc.EglBase
+import org.webrtc.IceCandidate
+import org.webrtc.MediaConstraints
+import org.webrtc.MediaStream
+import org.webrtc.PeerConnection
+import org.webrtc.PeerConnectionFactory
+import org.webrtc.RtpTransceiver
+import org.webrtc.SdpObserver
+import org.webrtc.SessionDescription
 import org.webrtc.VideoTrack
+import java.util.UUID
 
-class BlinkViewModel : ViewModel() {
+class BlinkViewModel(application: Application) : AndroidViewModel(application) {
+    private val userId = UUID.randomUUID().toString()
+    private val appContext = application.applicationContext
+
+
     private val _remoteVideoCall = MutableStateFlow<VideoTrack?>(null)
     val remoteVideoCall: StateFlow<VideoTrack?> = _remoteVideoCall.asStateFlow()
-    private val signalingRepository = SignalingRepository()
+    private val signalingRepository = SignalingRepository(userId)
 
-    fun getRemoteDescription() {
+    private lateinit var peerConnectionFactory: PeerConnectionFactory
+    private var peerConnection: PeerConnection? = null
+    private val eglBase = EglBase.create()
+
+    init {
+        initializePeerConnectionFactory()
+        initializePeerConnection()
+        start()
+    }
+
+    private fun initializePeerConnectionFactory() {
+        PeerConnectionFactory.initialize(
+            PeerConnectionFactory.InitializationOptions.builder(appContext)
+                .createInitializationOptions()
+        )
+        peerConnectionFactory = PeerConnectionFactory.builder()
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+            .createPeerConnectionFactory()
+    }
+
+    private fun initializePeerConnection() {
+        val rtcConfig = PeerConnection.RTCConfiguration(listOf())
+        peerConnection =
+            peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
+                override fun onIceCandidate(candidate: IceCandidate?) {
+                    candidate?.let { signalingRepository.sendIceCandidate(it) }
+                }
+
+                override fun onTrack(transceiver: RtpTransceiver?) {
+                    val videoTrack = transceiver?.receiver?.track() as? VideoTrack
+                    videoTrack?.let { _remoteVideoCall.value = it }
+                }
+
+                override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {}
+                override fun onSignalingChange(newState: PeerConnection.SignalingState?) {}
+                override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {}
+                override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {}
+                override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
+                override fun onAddStream(stream: MediaStream?) {}
+                override fun onRemoveStream(stream: MediaStream?) {}
+                override fun onDataChannel(channel: DataChannel?) {}
+                override fun onRenegotiationNeeded() {}
+                override fun onIceConnectionReceivingChange(receiving: Boolean) {
+                    println("onIceConnectionReceivingChange: $receiving")
+                }
+            }) ?: throw IllegalStateException("Failed to create PeerConnection")
+        //addLocalMediaStream()
+    }
+
+    /*private fun addLocalMediaStream() {
+        val audioTrack = peerConnectionFactory.createAudioTrack(
+            "audio_track", peerConnectionFactory.createAudioSource(MediaConstraints())
+        )
+        val videoTrack = peerConnectionFactory.createVideoTrack(
+            "video_track", peerConnectionFactory.createVideoSource(false)
+        )
+
+        val mediaStream = peerConnectionFactory.createLocalMediaStream("local_stream")
+        mediaStream.addTrack(audioTrack)
+        mediaStream.addTrack(videoTrack)
+
+        peerConnection?.addStream(mediaStream)
+    }*/
+
+
+    fun start() {
+        val mediaConstraints = MediaConstraints().apply {
+            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
+        }
         viewModelScope.launch {
             try {
-                signalingRepository.getRemoteDescription("TEST_SPD").collect { signalingData ->
-                    // Aquí puedes realizar acciones adicionales si es necesario
-                    println("Remote SDP recibido: ${signalingData.sdp}")
+                val type = signalingRepository.revealSignalingType()
+                if (type == SessionDescription.Type.OFFER) {
+                    peerConnection?.createOffer(object : SdpObserver {
+                        override fun onCreateSuccess(sdp: SessionDescription?) {
+                            sdp?.let { viewModelScope.launch { setDescriptions(sdp) } }
+                        }
+
+                        override fun onSetSuccess() {}
+
+                        override fun onCreateFailure(error: String?) {
+                            println("Error al crear la oferta: $error")
+                        }
+
+                        override fun onSetFailure(error: String?) {}
+                    }, mediaConstraints)
+                } else {
+                    val remoteOffer = signalingRepository.getOfferIfAvailable()
+                    peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
+                    peerConnection?.createAnswer(object : SdpObserver {
+                        override fun onCreateSuccess(sdp: SessionDescription?) {
+                            sdp?.let { viewModelScope.launch { setDescriptions(sdp) } }
+                        }
+
+                        override fun onSetSuccess() {}
+
+                        override fun onCreateFailure(error: String?) {
+                            println("Error al crear la respuesta: $error")
+                        }
+
+                        override fun onSetFailure(error: String?) {}
+                    }, mediaConstraints)
                 }
             } catch (e: Exception) {
                 println("Error en el signaling: ${e.message}")
@@ -27,4 +144,24 @@ class BlinkViewModel : ViewModel() {
         }
     }
 
+    private suspend fun setDescriptions(localSdp: SessionDescription) {
+        signalingRepository.getRemoteDescription(localSdp.description).collect { signalingData ->
+            peerConnection?.setRemoteDescription(
+                SimpleSdpObserver(), signalingData
+            )
+            println("Remote SDP recibido y configurado")
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        runBlocking { signalingRepository.close() }
+    }
+}
+
+class SimpleSdpObserver : SdpObserver {
+    override fun onSetSuccess() {}
+    override fun onSetFailure(error: String?) {}
+    override fun onCreateSuccess(description: SessionDescription?) {}
+    override fun onCreateFailure(error: String?) {}
 }

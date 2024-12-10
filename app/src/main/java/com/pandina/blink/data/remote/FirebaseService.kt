@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.tasks.await
+import org.webrtc.SessionDescription
 import java.util.UUID
 
 class FirebaseService(val userId: String) {
@@ -12,6 +13,11 @@ class FirebaseService(val userId: String) {
     companion object {
         private const val COLLECTION_ROOMS = "rooms"
         private const val COLLECTION_WAITING_ROOM = "waitingRoom"
+    }
+
+    suspend fun getWaitingRoom(): String? {
+        return db.collection(COLLECTION_WAITING_ROOM).document("current").get().await()
+            .getString("roomId")
     }
 
     // Obtener el id de una sala en espera
@@ -34,11 +40,15 @@ class FirebaseService(val userId: String) {
         }.await()
     }
 
+    suspend fun remoteWaitingRoom() {
+        db.collection(COLLECTION_WAITING_ROOM).document("current").delete().await()
+    }
+
     // Crear una sala con la oferta del propietario
     suspend fun createWaitingRoom(offerSdp: String): String {
         return try {
             val room = mapOf(
-                "user1" to userId, "offer" to mapOf(
+                "offer" to mapOf(
                     "sdp" to offerSdp, "ownerId" to userId
                 ), "answer" to null
             )
@@ -72,7 +82,7 @@ class FirebaseService(val userId: String) {
                 "sdp" to answerSdp, "responderId" to userId
             )
             db.collection(COLLECTION_ROOMS).document(roomId).update(
-                "user2", userId, "answer", answer
+                "answer", answer
             ).await()
 
             // Eliminar la sala de waitingRoom
@@ -84,6 +94,13 @@ class FirebaseService(val userId: String) {
             Log.e("FirebaseService", "Error connecting to room: ${e.message}")
             null
         }
+    }
+
+    suspend fun getOfferSdp(roomId: String): SessionDescription? {
+        val offerSpd = db.collection(COLLECTION_ROOMS).document(roomId).get().await()
+            .getString("offer.sdp")
+        offerSpd?.let { return SessionDescription(SessionDescription.Type.OFFER, it) }
+        return null
     }
 
 
@@ -101,12 +118,16 @@ class FirebaseService(val userId: String) {
                     // Llamar al callback cuando se recibe la respuesta
                     onAnswerReceived(answerSdp)
 
-                    listener?.remove()
-
-                    // Eliminar la sala
+                    // Eliminar la sala [COMENTAR PARA MANTENER LA SALA]
                     db.collection(COLLECTION_ROOMS).document(roomId).delete()
+
+                    listener?.remove()
                 }
             }
         return listener
+    }
+
+    suspend fun deleteRoom(roomId: String) {
+        db.collection(COLLECTION_ROOMS).document(roomId).delete().await()
     }
 }

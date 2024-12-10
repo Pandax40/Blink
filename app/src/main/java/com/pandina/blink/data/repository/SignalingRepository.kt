@@ -1,15 +1,29 @@
-package com.pandina.blink.data.remote
+package com.pandina.blink.data.repository
 
-import com.pandina.blink.data.model.SignalingData
+import com.google.firebase.firestore.ListenerRegistration
+import com.pandina.blink.data.remote.FirebaseService
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import java.util.UUID
+import org.webrtc.IceCandidate
+import org.webrtc.SessionDescription
 
-class SignalingRepository() {
-
-    val userId = UUID.randomUUID().toString()
+class SignalingRepository(userId: String) {
     private val firebaseService: FirebaseService = FirebaseService(userId)
+    private var listener: ListenerRegistration? = null
+    private var roomId: String? = null
+    private lateinit var currentType: SessionDescription.Type
+
+    suspend fun revealSignalingType(): SessionDescription.Type {
+        close()
+        roomId = firebaseService.getAndRemoveWaitingRoom()
+        currentType = if (roomId != null) {
+            SessionDescription.Type.ANSWER
+        } else {
+            SessionDescription.Type.OFFER
+        }
+        return currentType
+    }
 
     /**
      * Maneja la lógica de señalización para obtener la descripción remota.
@@ -18,33 +32,55 @@ class SignalingRepository() {
      * @param sdp La descripción SDP local (oferta o respuesta).
      * @return Un flujo (`Flow`) que emite un `SignalingData` con la descripción remota.
      */
-    fun getRemoteDescription(sdp: String): Flow<SignalingData> = callbackFlow {
+    fun getRemoteDescription(sdp: String): Flow<SessionDescription> = callbackFlow {
         try {
             // Obtener o crear la sala
-            val roomId = firebaseService.getAndRemoveWaitingRoom()?.let { existingRoomId ->
+            roomId?.let { existingRoomId ->
                 // Si hay una sala disponible, conectarse a ella y obtener el offerSDP
-                val offerSdp = firebaseService.connectToRoom(existingRoomId, sdp)
-                offerSdp?.let { offerSdp ->
+                val offerSDPNullable = firebaseService.connectToRoom(existingRoomId, sdp)
+                offerSDPNullable?.let { offerSDP ->
                     // Emitir el offerSDP inmediatamente
-                    trySend(SignalingData(type = "remoteDescription", sdp = offerSdp))
+                    trySend(SessionDescription(SessionDescription.Type.OFFER, offerSDP))
                     return@callbackFlow
                 }
-                existingRoomId
+                roomId = null
             } ?: run {
                 // Si no hay una sala, crear una nueva
-                firebaseService.createWaitingRoom(sdp)
+                val roomIdValid = firebaseService.createWaitingRoom(sdp)
+                roomId = roomIdValid
+
+                listener =
+                    firebaseService.listenForAnswer(
+                        roomId = roomIdValid,
+                        onAnswerReceived = { awnserSDP ->
+                            trySend(SessionDescription(SessionDescription.Type.ANSWER, awnserSDP))
+                        })
             }
-
-            // Configurar la escucha solo si no se obtuvo un offerSDP
-            val listener =
-                firebaseService.listenForAnswer(roomId = roomId, onAnswerReceived = { remoteSdp ->
-                    trySend(SignalingData(type = "remoteDescription", sdp = remoteSdp))
-                })
-
-            awaitClose { listener.remove() }
+            awaitClose { listener?.remove() }
         } catch (e: Exception) {
             close(e)
         }
     }
 
+    suspend fun getOfferIfAvailable(): SessionDescription? {
+        roomId?.let { existingRoomId ->
+            return firebaseService.getOfferSdp(existingRoomId)
+        }
+        return null
+    }
+
+    fun sendIceCandidate(candidate: IceCandidate) {
+        roomId?.let { roomId ->
+            //firebaseService.sendIceCandidate(roomId, candidate, sdpMid, sdpMLineIndex)
+        }
+    }
+
+    suspend fun close() {
+        listener?.remove()
+        roomId?.let { roomId ->
+            if (firebaseService.getWaitingRoom() == roomId)
+                firebaseService.remoteWaitingRoom()
+            firebaseService.deleteRoom(roomId)
+        }
+    }
 }
