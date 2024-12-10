@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "737656317152",
+    "project_id": "blinksignaling",
+    "storage_bucket": "blinksignaling.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:737656317152:android:87f05b998d7dac89bf5c85",
+        "android_client_info": {
+          "package_name": "com.pandina.blink"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABICZpSuJLY0V7dIHv8DmtExR3q1hTlyY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
