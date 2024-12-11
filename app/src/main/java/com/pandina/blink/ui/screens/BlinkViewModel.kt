@@ -55,7 +55,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun initializePeerConnection() {
-        val rtcConfig = PeerConnection.RTCConfiguration(listOf())
+        val rtcConfig = PeerConnection.RTCConfiguration(listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun1.l.google.com:3478").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun2.l.google.com:5349").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer(),
+        ))
         peerConnection =
             peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
                 override fun onIceCandidate(candidate: IceCandidate?) {
@@ -145,6 +150,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun setDescriptions(localSdp: SessionDescription) {
+        peerConnection?.setLocalDescription(SimpleSdpObserver(), localSdp)
         signalingRepository.getRemoteDescription(localSdp.description).collect { signalingData ->
             peerConnection?.setRemoteDescription(
                 SimpleSdpObserver(), signalingData
