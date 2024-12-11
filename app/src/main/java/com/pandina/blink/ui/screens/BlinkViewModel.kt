@@ -85,7 +85,39 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {}
+                override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
+                    when (newState) {
+                        PeerConnection.IceConnectionState.CHECKING -> {
+                            println("ICE Connection: Verificando conectividad")
+                        }
+
+                        PeerConnection.IceConnectionState.CONNECTED -> {
+                            println("ICE Connection: Conexión establecida")
+                        }
+
+                        PeerConnection.IceConnectionState.COMPLETED -> {
+                            println("ICE Connection: Negociación completada")
+                            // Aquí puedes considerar que la conexión está completamente establecida.
+                        }
+
+                        PeerConnection.IceConnectionState.FAILED -> {
+                            println("ICE Connection: La conexión ha fallado")
+                        }
+
+                        PeerConnection.IceConnectionState.DISCONNECTED -> {
+                            println("ICE Connection: Conexión perdida")
+                        }
+
+                        PeerConnection.IceConnectionState.CLOSED -> {
+                            println("ICE Connection: Conexión cerrada")
+                        }
+
+                        else -> {
+                            println("ICE Connection: Estado desconocido $newState")
+                        }
+                    }
+                }
+
                 override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {}
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
                 override fun onAddStream(stream: MediaStream?) {}
@@ -125,8 +157,22 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 val type = signalingRepository.revealSignalingType()
                 if (type == SessionDescription.Type.OFFER) {
                     peerConnection?.createOffer(object : SdpObserver {
-                        override fun onCreateSuccess(sdp: SessionDescription?) {
-                            sdp?.let { viewModelScope.launch { setDescriptions(sdp) } }
+                        override fun onCreateSuccess(offerSdp: SessionDescription?) {
+                            offerSdp?.let {
+                                viewModelScope.launch {
+                                    peerConnection?.setLocalDescription(
+                                        SimpleSdpObserver(),
+                                        offerSdp
+                                    )
+                                    signalingRepository.setOffer(offerSdp.description)
+                                        .collect { awnserSdp ->
+                                            peerConnection?.setRemoteDescription(
+                                                SimpleSdpObserver(),
+                                                awnserSdp
+                                            )
+                                        }
+                                }
+                            }
                         }
 
                         override fun onSetSuccess() {}
@@ -138,15 +184,19 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         override fun onSetFailure(error: String?) {}
                     }, mediaConstraints)
                 } else {
-                    val remoteOffer = signalingRepository.getOfferIfAvailable()
+                    val remoteOffer = signalingRepository.getOffer()
                     peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
                     peerConnection?.createAnswer(object : SdpObserver {
-                        override fun onCreateSuccess(sdp: SessionDescription?) {
-                            sdp?.let {
+                        override fun onCreateSuccess(awnserSdp: SessionDescription?) {
+                            awnserSdp?.let {
                                 viewModelScope.launch {
-                                    peerConnection?.setLocalDescription(SimpleSdpObserver(), sdp)
-                                    signalingRepository.getRemoteDescription(sdp.description)
+                                    peerConnection?.setLocalDescription(
+                                        SimpleSdpObserver(),
+                                        awnserSdp
+                                    )
+                                    signalingRepository.sendAwnser(awnserSdp.description)
                                 }
+
                             }
                         }
 
@@ -162,16 +212,6 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 println("Error en el signaling: ${e.message}")
             }
-        }
-    }
-
-    private suspend fun setDescriptions(localSdp: SessionDescription) {
-        peerConnection?.setLocalDescription(SimpleSdpObserver(), localSdp)
-        signalingRepository.getRemoteDescription(localSdp.description).collect { signalingData ->
-            peerConnection?.setRemoteDescription(
-                SimpleSdpObserver(), signalingData
-            )
-            println("Remote SDP recibido y configurado")
         }
     }
 
