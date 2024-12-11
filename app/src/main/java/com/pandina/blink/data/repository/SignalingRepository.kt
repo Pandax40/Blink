@@ -41,7 +41,6 @@ class SignalingRepository(userId: String) {
                 offerSDPNullable?.let { offerSDP ->
                     // Emitir el offerSDP inmediatamente
                     trySend(SessionDescription(SessionDescription.Type.OFFER, offerSDP))
-                    return@callbackFlow
                 }
                 roomId = null
             } ?: run {
@@ -52,8 +51,8 @@ class SignalingRepository(userId: String) {
                 listener =
                     firebaseService.listenForAnswer(
                         roomId = roomIdValid,
-                        onAnswerReceived = { awnserSDP ->
-                            trySend(SessionDescription(SessionDescription.Type.ANSWER, awnserSDP))
+                        onAnswerReceived = { answerSSDP ->
+                            trySend(SessionDescription(SessionDescription.Type.ANSWER, answerSSDP))
                         })
             }
             awaitClose { listener?.remove() }
