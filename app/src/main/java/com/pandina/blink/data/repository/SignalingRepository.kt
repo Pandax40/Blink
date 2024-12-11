@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import org.webrtc.IceCandidate
 import org.webrtc.SessionDescription
 
-class SignalingRepository(userId: String) {
+class SignalingRepository(val userId: String) {
     private val firebaseService: FirebaseService = FirebaseService(userId)
     private var listener: ListenerRegistration? = null
     private var roomId: String? = null
@@ -66,11 +66,12 @@ class SignalingRepository(userId: String) {
     fun getIceCandidates(): Flow<IceCandidate> = callbackFlow {
         try {
             ownerId?.let { ownerId ->
-                listener = firebaseService.listenForIceCandidate(ownerId) { candidate, sdpMid, sdpMLineIndex ->
-                    trySend(IceCandidate(sdpMid, sdpMLineIndex, candidate))
-                }
+                listener =
+                    firebaseService.listenForIceCandidate(ownerId) { candidate, sdpMid, sdpMLineIndex ->
+                        trySend(IceCandidate(sdpMid, sdpMLineIndex, candidate))
+                    }
             }
-            awaitClose {  }
+            awaitClose { }
         } catch (e: Exception) {
             close(e)
         }
@@ -83,10 +84,13 @@ class SignalingRepository(userId: String) {
         return null
     }
 
-    fun sendIceCandidate(candidate: IceCandidate) {
-        roomId?.let { roomId ->
-            //firebaseService.sendIceCandidate(roomId, candidate, sdpMid, sdpMLineIndex)
-        }
+    suspend fun sendIceCandidate(candidate: IceCandidate) {
+        firebaseService.addIceCandidate(
+            userId,
+            candidate.sdp,
+            candidate.sdpMid,
+            candidate.sdpMLineIndex
+        )
     }
 
     suspend fun close() {

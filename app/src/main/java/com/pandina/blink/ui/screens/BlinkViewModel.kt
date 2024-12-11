@@ -66,7 +66,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         peerConnection =
             peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
                 override fun onIceCandidate(candidate: IceCandidate?) {
-                    candidate?.let { signalingRepository.sendIceCandidate(it) }
+                    candidate?.let { viewModelScope.launch { signalingRepository.sendIceCandidate(it) } }
                 }
 
                 override fun onTrack(transceiver: RtpTransceiver?) {
@@ -142,7 +142,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
                     peerConnection?.createAnswer(object : SdpObserver {
                         override fun onCreateSuccess(sdp: SessionDescription?) {
-                            sdp?.let { viewModelScope.launch { setDescriptions(sdp) } }
+                            sdp?.let {
+                                viewModelScope.launch {
+                                    peerConnection?.setLocalDescription(SimpleSdpObserver(), sdp)
+                                    signalingRepository.getRemoteDescription(sdp.description)
+                                }
+                            }
                         }
 
                         override fun onSetSuccess() {}

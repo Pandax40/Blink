@@ -3,6 +3,7 @@ package com.pandina.blink.data.remote
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import org.webrtc.SessionDescription
 import java.util.UUID
@@ -23,23 +24,27 @@ class FirebaseService(val userId: String) {
 
     // Obtener el id de una sala en espera
     suspend fun getAndRemoveWaitingRoom(): String? {
-        return db.runTransaction { transaction ->
-            // Referencia al documento único de "waitingRoom"
+        return try {
             val docRef = db.collection(COLLECTION_WAITING_ROOM).document("current")
 
-            // Leer el documento
-            val snapshot = transaction.get(docRef)
+            // Obtener el documento
+            val snapshot = docRef.get().await()
+
+            // Leer el roomId
             val roomId = snapshot.getString("roomId")
 
+            // Eliminar el documento si existe
             if (roomId != null) {
-                // Eliminar el documento si existe
-                transaction.delete(docRef)
+                docRef.delete().await()
             }
 
-            // Devolver el roomId (o null si no había waitingRoom)
             roomId
-        }.await()
+        } catch (e: Exception) {
+            Log.e("FirebaseService", "Error getting and removing waiting room: ${e.message}")
+            null
+        }
     }
+
 
     suspend fun remoteWaitingRoom() {
         db.collection(COLLECTION_WAITING_ROOM).document("current").delete().await()
@@ -98,8 +103,8 @@ class FirebaseService(val userId: String) {
     }
 
     suspend fun getOfferSdp(roomId: String): SessionDescription? {
-        val offerSpd = db.collection(COLLECTION_ROOMS).document(roomId).get().await()
-            .getString("offer.sdp")
+        val offerSpd =
+            db.collection(COLLECTION_ROOMS).document(roomId).get().await().getString("offer.sdp")
         offerSpd?.let { return SessionDescription(SessionDescription.Type.OFFER, it) }
         return null
     }
@@ -131,18 +136,67 @@ class FirebaseService(val userId: String) {
         return listener
     }
 
-    fun listenForIceCandidate(userId: String, onIceCandidateReceived: (String, String, Int) -> Unit): ListenerRegistration {
-        return db.collection(COLLECTION_ICE_CANDIDATE).document(userId).addSnapshotListener { snapshot, e ->
-            if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+    fun listenForIceCandidate(
+        userId: String, onIceCandidateReceived: (String, String, Int) -> Unit
+    ): ListenerRegistration {
+        val processedCandidates =
+            mutableSetOf<String>() // Conjunto para rastrear candidatos procesados
 
-            val candidate = snapshot.get("candidate") as? String
-            val sdpMid = snapshot.get("sdpMid") as? String
-            val sdpMLineIndex = snapshot.get("sdpMLineIndex") as? Int
-            if (candidate != null && sdpMid != null && sdpMLineIndex != null) {
-                onIceCandidateReceived(candidate, sdpMid, sdpMLineIndex)
+        return db.collection(COLLECTION_ICE_CANDIDATE).document(userId)
+            .addSnapshotListener { snapshot, e ->
+                if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+
+                // Iterar sobre los datos del documento
+                val iceCandidates = snapshot.data ?: return@addSnapshotListener
+                for ((key, value) in iceCandidates) {
+                    if (value is Map<*, *>) {
+                        // Generar una clave única para identificar el candidato
+                        val candidateKey = "$userId-$key"
+
+                        // Verificar si ya se ha procesado
+                        if (processedCandidates.contains(candidateKey)) continue
+
+                        // Extraer valores del subdocumento
+                        val candidate = value["candidate"] as? String
+                        val sdpMid = value["sdpMid"] as? String
+                        val sdpMLineIndex = (value["sdpMLineIndex"] as? Number)?.toInt()
+
+                        if (candidate != null && sdpMid != null && sdpMLineIndex != null) {
+                            // Ejecutar la función con el ICE Candidate
+                            onIceCandidateReceived(candidate, sdpMid, sdpMLineIndex)
+                            // Marcar este candidato como procesado
+                            processedCandidates.add(candidateKey)
+                        } else {
+                            println("Error: ICE Candidate incompleto en $value")
+                        }
+                    }
+                }
             }
+    }
+
+    suspend fun addIceCandidate(
+        userId: String, candidate: String, sdpMid: String, sdpMLineIndex: Int
+    ) {
+        try {
+            // Crear un nuevo mapa con los datos del ICE Candidate
+            val iceCandidateData = mapOf(
+                "candidate" to candidate, "sdpMid" to sdpMid, "sdpMLineIndex" to sdpMLineIndex
+            )
+
+            // Generar una clave única para el nuevo candidato
+            val newCandidateId = UUID.randomUUID().toString()
+
+            // Añadir el nuevo candidato a la colección bajo el userId
+            db.collection(COLLECTION_ICE_CANDIDATE).document(userId)
+                .set(mapOf(newCandidateId to iceCandidateData), SetOptions.merge()).await()
+
+            println("ICE Candidate agregado exitosamente para el usuario $userId")
+        } catch (e: Exception) {
+            println("Error al agregar el ICE Candidate: ${e.message}")
         }
     }
+
+
 
     suspend fun deleteRoom(roomId: String) {
         db.collection(COLLECTION_ROOMS).document(roomId).delete().await()
