@@ -13,6 +13,7 @@ class FirebaseService(val userId: String) {
     companion object {
         private const val COLLECTION_ROOMS = "rooms"
         private const val COLLECTION_WAITING_ROOM = "waitingRoom"
+        private const val COLLECTION_ICE_CANDIDATE = "iceCandidates"
     }
 
     suspend fun getWaitingRoom(): String? {
@@ -106,7 +107,7 @@ class FirebaseService(val userId: String) {
 
     // Escuchar por una respuesta en una sala
     fun listenForAnswer(
-        roomId: String, onAnswerReceived: (String) -> Unit
+        roomId: String, onAnswerReceived: (String, String) -> Unit
     ): ListenerRegistration {
         var listener: ListenerRegistration? = null
         listener =
@@ -114,9 +115,12 @@ class FirebaseService(val userId: String) {
                 if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
                 val answerSdp = snapshot.get("answer.sdp") as? String
+                val ownerId = snapshot.get("answer.ownerId") as? String
                 if (answerSdp != null) {
                     // Llamar al callback cuando se recibe la respuesta
-                    onAnswerReceived(answerSdp)
+                    if (ownerId != null) {
+                        onAnswerReceived(answerSdp, ownerId)
+                    }
 
                     // Eliminar la sala [COMENTAR PARA MANTENER LA SALA]
                     db.collection(COLLECTION_ROOMS).document(roomId).delete()
@@ -125,6 +129,19 @@ class FirebaseService(val userId: String) {
                 }
             }
         return listener
+    }
+
+    fun listenForIceCandidate(userId: String, onIceCandidateReceived: (String, String, Int) -> Unit): ListenerRegistration {
+        return db.collection(COLLECTION_ICE_CANDIDATE).document(userId).addSnapshotListener { snapshot, e ->
+            if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+
+            val candidate = snapshot.get("candidate") as? String
+            val sdpMid = snapshot.get("sdpMid") as? String
+            val sdpMLineIndex = snapshot.get("sdpMLineIndex") as? Int
+            if (candidate != null && sdpMid != null && sdpMLineIndex != null) {
+                onIceCandidateReceived(candidate, sdpMid, sdpMLineIndex)
+            }
+        }
     }
 
     suspend fun deleteRoom(roomId: String) {

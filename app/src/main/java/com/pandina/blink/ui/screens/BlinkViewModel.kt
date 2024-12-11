@@ -55,12 +55,14 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun initializePeerConnection() {
-        val rtcConfig = PeerConnection.RTCConfiguration(listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun1.l.google.com:3478").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun2.l.google.com:5349").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer(),
-        ))
+        val rtcConfig = PeerConnection.RTCConfiguration(
+            listOf(
+                PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+                PeerConnection.IceServer.builder("stun:stun1.l.google.com:3478").createIceServer(),
+                PeerConnection.IceServer.builder("stun:stun2.l.google.com:5349").createIceServer(),
+                PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer(),
+            )
+        )
         peerConnection =
             peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
                 override fun onIceCandidate(candidate: IceCandidate?) {
@@ -73,7 +75,16 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {}
-                override fun onSignalingChange(newState: PeerConnection.SignalingState?) {}
+                override fun onSignalingChange(newState: PeerConnection.SignalingState?) {
+                    if (newState == PeerConnection.SignalingState.STABLE) {
+                        viewModelScope.launch {
+                            signalingRepository.getIceCandidates().collect { iceCandidate ->
+                                peerConnection?.addIceCandidate(iceCandidate)
+                            }
+                        }
+                    }
+                }
+
                 override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {}
                 override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {}
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}

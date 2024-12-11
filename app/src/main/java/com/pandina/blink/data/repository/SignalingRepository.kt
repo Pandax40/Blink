@@ -12,6 +12,7 @@ class SignalingRepository(userId: String) {
     private val firebaseService: FirebaseService = FirebaseService(userId)
     private var listener: ListenerRegistration? = null
     private var roomId: String? = null
+    private var ownerId: String? = null
     private lateinit var currentType: SessionDescription.Type
 
     suspend fun revealSignalingType(): SessionDescription.Type {
@@ -51,11 +52,25 @@ class SignalingRepository(userId: String) {
                 listener =
                     firebaseService.listenForAnswer(
                         roomId = roomIdValid,
-                        onAnswerReceived = { answerSSDP ->
+                        onAnswerReceived = { answerSSDP, ownerIdGot ->
+                            ownerId = ownerIdGot
                             trySend(SessionDescription(SessionDescription.Type.ANSWER, answerSSDP))
                         })
             }
             awaitClose { listener?.remove() }
+        } catch (e: Exception) {
+            close(e)
+        }
+    }
+
+    fun getIceCandidates(): Flow<IceCandidate> = callbackFlow {
+        try {
+            ownerId?.let { ownerId ->
+                listener = firebaseService.listenForIceCandidate(ownerId) { candidate, sdpMid, sdpMLineIndex ->
+                    trySend(IceCandidate(sdpMid, sdpMLineIndex, candidate))
+                }
+            }
+            awaitClose {  }
         } catch (e: Exception) {
             close(e)
         }
