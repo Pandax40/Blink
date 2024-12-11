@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.webrtc.Camera2Enumerator
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
@@ -21,13 +22,14 @@ import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import org.webrtc.SurfaceTextureHelper
+import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import java.util.UUID
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val userId = UUID.randomUUID().toString()
     private val appContext = application.applicationContext
-
 
     private val _remoteVideoCall = MutableStateFlow<VideoTrack?>(null)
     val remoteVideoCall: StateFlow<VideoTrack?> = _remoteVideoCall.asStateFlow()
@@ -37,12 +39,20 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var peerConnection: PeerConnection? = null
     private val eglBase = EglBase.create()
 
+    private lateinit var videoCapturer: VideoCapturer
+    private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
+    val localVideoTrack: StateFlow<VideoTrack?> = _localVideoTrack.asStateFlow()
+
+
     init {
         initializePeerConnectionFactory()
+        initializeLocalVideoTrack()
         initializePeerConnection()
-        start()
+        addLocalMediaTracks()
+        signaling()
     }
 
+    // WEB RTC CONFIGURATION
     private fun initializePeerConnectionFactory() {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(appContext)
@@ -131,23 +141,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         //addLocalMediaStream()
     }
 
-    /*private fun addLocalMediaStream() {
-        val audioTrack = peerConnectionFactory.createAudioTrack(
-            "audio_track", peerConnectionFactory.createAudioSource(MediaConstraints())
-        )
-        val videoTrack = peerConnectionFactory.createVideoTrack(
-            "video_track", peerConnectionFactory.createVideoSource(false)
-        )
-
-        val mediaStream = peerConnectionFactory.createLocalMediaStream("local_stream")
-        mediaStream.addTrack(audioTrack)
-        mediaStream.addTrack(videoTrack)
-
-        peerConnection?.addStream(mediaStream)
-    }*/
-
-
-    fun start() {
+    fun signaling() {
         val mediaConstraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
@@ -165,10 +159,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                         offerSdp
                                     )
                                     signalingRepository.setOffer(offerSdp.description)
-                                        .collect { awnserSdp ->
+                                        .collect { answerSdp ->
                                             peerConnection?.setRemoteDescription(
                                                 SimpleSdpObserver(),
-                                                awnserSdp
+                                                answerSdp
                                             )
                                         }
                                 }
@@ -190,11 +184,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         override fun onCreateSuccess(awnserSdp: SessionDescription?) {
                             awnserSdp?.let {
                                 viewModelScope.launch {
+                                    signalingRepository.sendAwnser(awnserSdp.description) //Enviar antes para tener el remoteUserId
                                     peerConnection?.setLocalDescription(
                                         SimpleSdpObserver(),
                                         awnserSdp
                                     )
-                                    signalingRepository.sendAwnser(awnserSdp.description)
                                 }
 
                             }
@@ -215,6 +209,68 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Video Configuration
+    private fun initializeLocalVideoTrack() {
+        val videoSource = peerConnectionFactory.createVideoSource(false)
+
+        videoCapturer = createCameraCapturer()
+        videoCapturer.initialize(
+            SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext),
+            appContext,
+            videoSource.capturerObserver
+        )
+
+        videoCapturer.startCapture(1280, 720, 30)
+
+        _localVideoTrack.value = peerConnectionFactory.createVideoTrack("LOCAL_VIDEO_TRACK", videoSource)
+    }
+
+    private fun createCameraCapturer(): VideoCapturer {
+        val cameraEnumerator = Camera2Enumerator(appContext)
+        val deviceNames = cameraEnumerator.deviceNames
+
+        for (deviceName in deviceNames) {
+            if (cameraEnumerator.isFrontFacing(deviceName)) {
+                return cameraEnumerator.createCapturer(deviceName, null) ?: continue
+            }
+        }
+
+        for (deviceName in deviceNames) {
+            if (cameraEnumerator.isBackFacing(deviceName)) {
+                return cameraEnumerator.createCapturer(deviceName, null) ?: continue
+            }
+        }
+
+        throw IllegalStateException("No se encontró ninguna cámara disponible")
+    }
+
+    private fun addLocalMediaTracks() {
+        try {
+            // Agregar VideoTrack al PeerConnection
+            _localVideoTrack.value?.let { videoTrack ->
+                peerConnection?.addTrack(videoTrack, listOf("local_stream"))
+            } ?: run {
+                println("Error: LocalVideoTrack no está inicializado")
+            }
+
+            // Configurar y Agregar AudioTrack
+            val audioConstraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+                mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+            }
+            val audioSource = peerConnectionFactory.createAudioSource(audioConstraints)
+            val audioTrack = peerConnectionFactory.createAudioTrack("LOCAL_AUDIO_TRACK", audioSource)
+
+            peerConnection?.addTrack(audioTrack, listOf("local_stream"))
+
+            println("Audio y Video Tracks agregados al PeerConnection")
+        } catch (e: Exception) {
+            println("Error al agregar Tracks al PeerConnection: ${e.message}")
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         runBlocking { signalingRepository.close() }
@@ -227,3 +283,4 @@ class SimpleSdpObserver : SdpObserver {
     override fun onCreateSuccess(description: SessionDescription?) {}
     override fun onCreateFailure(error: String?) {}
 }
+

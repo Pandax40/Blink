@@ -37,45 +37,41 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.getstream.webrtc.android.compose.VideoRenderer
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
+import org.webrtc.VideoTrack
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("") },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
+    Scaffold(topBar = {
+        CenterAlignedTopAppBar(title = { Text("") },
+            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                titleContentColor = MaterialTheme.colorScheme.primary,
+            ),
+            navigationIcon = {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back"
+                    )
                 }
+            })
+    }, bottomBar = {
+        Button(
+            onClick = { viewModel.signaling() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 8.dp)
+                .padding(WindowInsets.navigationBars.asPaddingValues())
+        ) {
+            Text(
+                text = "Blink Again",
+                fontStyle = MaterialTheme.typography.bodyMedium.fontStyle,
+                fontWeight = MaterialTheme.typography.bodyMedium.fontWeight,
             )
-        },
-        bottomBar = {
-            Button(
-                onClick = { viewModel.start() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .padding(bottom = 8.dp)
-                    .padding(WindowInsets.navigationBars.asPaddingValues())
-            ) {
-                Text(
-                    text = "Blink Again",
-                    fontStyle = MaterialTheme.typography.bodyMedium.fontStyle,
-                    fontWeight = MaterialTheme.typography.bodyMedium.fontWeight,
-                )
-            }
         }
-    ) { innerPadding ->
+    }) { innerPadding ->
         Column(
             modifier = Modifier
                 .consumeWindowInsets(innerPadding)
@@ -94,26 +90,8 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
                 val videoTrackState = viewModel.remoteVideoCall.collectAsState(null)
-                val rendererEvents = object : RendererCommon.RendererEvents {
-                    override fun onFirstFrameRendered() {
-                        // Lógica para el primer frame renderizado
-                    }
-
-                    override fun onFrameResolutionChanged(
-                        videoWidth: Int,
-                        videoHeight: Int,
-                        rotation: Int
-                    ) {
-                        // Lógica para el cambio de resolución del frame
-                    }
-                }
                 videoTrackState.value?.let { videoTrack ->
-                    VideoRenderer(
-                        videoTrack = videoTrack,
-                        eglBaseContext = EglBase.create().eglBaseContext,
-                        rendererEvents = rendererEvents,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    CameraView(videoTrack)
                 } ?: run {
                     Text("No video track available", modifier = Modifier.align(Alignment.Center))
                 }
@@ -127,10 +105,37 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
-                Text("User Camera", modifier = Modifier.align(Alignment.Center))
+                val videoTrackState = viewModel.localVideoTrack.collectAsState(null)
+                videoTrackState.value?.let { videoTrack ->
+                    CameraView(videoTrack)
+                } ?: run {
+                    Text("No video track available", modifier = Modifier.align(Alignment.Center))
+                }
+
             }
         }
     }
+}
+
+@Composable
+fun CameraView(videoTrack: VideoTrack) {
+    val rendererEvents = object : RendererCommon.RendererEvents {
+        override fun onFirstFrameRendered() {
+            // Lógica para el primer frame renderizado
+        }
+
+        override fun onFrameResolutionChanged(
+            videoWidth: Int, videoHeight: Int, rotation: Int
+        ) {
+            // Lógica para el cambio de resolución del frame
+        }
+    }
+    VideoRenderer(
+        videoTrack = videoTrack,
+        eglBaseContext = EglBase.create().eglBaseContext,
+        rendererEvents = rendererEvents,
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Preview

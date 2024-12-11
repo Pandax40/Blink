@@ -94,9 +94,6 @@ class FirebaseService(val userId: String) {
                 "answer", answer
             ).await()
 
-            // Eliminar la sala de waitingRoom
-            db.collection(COLLECTION_WAITING_ROOM).document("current").delete().await()
-
             // Devolver el offer SDP y el ownerId encontrado
             RoomOffer(offerSdp = offerSdp, ownerId = ownerId)
         } catch (e: Exception) {
@@ -124,15 +121,13 @@ class FirebaseService(val userId: String) {
                 if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
                 val answerSdp = snapshot.get("answer.sdp") as? String
-                val ownerId = snapshot.get("answer.ownerId") as? String
-                if (answerSdp != null) {
+                val ownerId = snapshot.get("answer.responderId") as? String
+                if (answerSdp != null && ownerId != null) {
                     // Llamar al callback cuando se recibe la respuesta
-                    if (ownerId != null) {
-                        onAnswerReceived(RoomAwnser(awnserSdp = answerSdp, responderId = ownerId))
-                    }
+                    onAnswerReceived(RoomAwnser(awnserSdp = answerSdp, responderId = ownerId))
 
                     // Eliminar la sala [COMENTAR PARA MANTENER LA SALA]
-                    db.collection(COLLECTION_ROOMS).document(roomId).delete()
+                    //db.collection(COLLECTION_ROOMS).document(roomId).delete()
 
                     listener?.remove()
                 }
