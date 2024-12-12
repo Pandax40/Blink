@@ -11,7 +11,7 @@ import org.webrtc.SessionDescription
 import java.util.UUID
 
 
-class FirebaseService(val userId: String) {
+class FirebaseService(private val userId: String) {
     private val db = FirebaseFirestore.getInstance()
 
     companion object {
