@@ -15,7 +15,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.pandina.blink.R
 import com.pandina.blink.data.repository.UserRepository
 
@@ -60,11 +59,12 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Connected Users
+            /*
             Text(
                 text = "Connected Users: ${numUsers.value}",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
-            )
+            )*/
         }
     }
 }
