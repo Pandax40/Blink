@@ -27,14 +27,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.getstream.webrtc.android.compose.VideoRenderer
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
 import org.webrtc.VideoTrack
@@ -94,7 +96,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
                 } ?: run {
-                    Text("No video track available", modifier = Modifier.align(Alignment.Center))
+                    Text("Waiting Users", modifier = Modifier.align(Alignment.Center))
                 }
             }
             Spacer(modifier = Modifier.height(18.dp))
@@ -121,24 +123,43 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
 
 @Composable
 fun CameraView(videoTrack: VideoTrack, eglBaseContext: EglBase.Context) {
-    val rendererEvents = object : RendererCommon.RendererEvents {
-        override fun onFirstFrameRendered() {
-            // Lógica para el primer frame renderizado
-        }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-        override fun onFrameResolutionChanged(
-            videoWidth: Int, videoHeight: Int, rotation: Int
-        ) {
-            // Lógica para el cambio de resolución del frame
+    // Crear el SurfaceViewRenderer una sola vez
+    val surfaceViewRenderer = remember {
+        org.webrtc.SurfaceViewRenderer(context).apply {
+            init(eglBaseContext, object : RendererCommon.RendererEvents {
+                override fun onFirstFrameRendered() {
+                    // Lógica para el primer frame renderizado
+                }
+
+                override fun onFrameResolutionChanged(
+                    videoWidth: Int, videoHeight: Int, rotation: Int
+                ) {
+                    // Lógica para el cambio de resolución del frame
+                }
+            })
+            // Opcional: Ajustar la vista espejo si es la cámara frontal
+            setMirror(true)
         }
     }
-    VideoRenderer(
-        videoTrack = videoTrack,
-        eglBaseContext = eglBaseContext,
-        rendererEvents = rendererEvents,
+
+    // Efecto para agregar y remover el sink del videoTrack
+    DisposableEffect(videoTrack) {
+        videoTrack.addSink(surfaceViewRenderer)
+        onDispose {
+            videoTrack.removeSink(surfaceViewRenderer)
+            surfaceViewRenderer.release()
+        }
+    }
+
+    // Incorporar el SurfaceViewRenderer dentro de Compose
+    AndroidView(
+        factory = { surfaceViewRenderer },
         modifier = Modifier.fillMaxSize()
     )
 }
+
 
 @Preview
 @Composable
