@@ -136,12 +136,12 @@ class FirebaseService(private val userId: String) {
     }
 
     fun listenForIceCandidate(
-        userId: String, onIceCandidateReceived: (String, String, Int) -> Unit
+        remoteUserId: String, onIceCandidateReceived: (String, String, Int) -> Unit
     ): ListenerRegistration {
         val processedCandidates =
             mutableSetOf<String>() // Conjunto para rastrear candidatos procesados
 
-        return db.collection(COLLECTION_ICE_CANDIDATE).document(userId)
+        return db.collection(COLLECTION_ICE_CANDIDATE).document(remoteUserId)
             .addSnapshotListener { snapshot, e ->
                 if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
@@ -150,7 +150,7 @@ class FirebaseService(private val userId: String) {
                 for ((key, value) in iceCandidates) {
                     if (value is Map<*, *>) {
                         // Generar una clave única para identificar el candidato
-                        val candidateKey = "$userId-$key"
+                        val candidateKey = "$remoteUserId-$key"
 
                         // Verificar si ya se ha procesado
                         if (processedCandidates.contains(candidateKey)) continue
@@ -197,5 +197,9 @@ class FirebaseService(private val userId: String) {
 
     suspend fun deleteRoom(roomId: String) {
         db.collection(COLLECTION_ROOMS).document(roomId).delete().await()
+    }
+
+    suspend fun deleteIceCandidates() {
+        db.collection(COLLECTION_ICE_CANDIDATE).document(userId).delete().await()
     }
 }

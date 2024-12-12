@@ -37,7 +37,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     private lateinit var peerConnectionFactory: PeerConnectionFactory
     private var peerConnection: PeerConnection? = null
-    private val eglBase = EglBase.create()
+    val eglBase = EglBase.create()
 
     private lateinit var videoCapturer: VideoCapturer
     private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
@@ -81,18 +81,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
                 override fun onTrack(transceiver: RtpTransceiver?) {
                     val videoTrack = transceiver?.receiver?.track() as? VideoTrack
+                    videoTrack?.setEnabled(true)
                     videoTrack?.let { _remoteVideoCall.value = it }
                 }
 
                 override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {}
                 override fun onSignalingChange(newState: PeerConnection.SignalingState?) {
-                    if (newState == PeerConnection.SignalingState.STABLE) {
-                        viewModelScope.launch {
-                            signalingRepository.getIceCandidates().collect { iceCandidate ->
-                                peerConnection?.addIceCandidate(iceCandidate)
-                            }
-                        }
-                    }
                 }
 
                 override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState?) {
@@ -164,6 +158,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                                 SimpleSdpObserver(),
                                                 answerSdp
                                             )
+                                            signalingRepository.getIceCandidates().collect { iceCandidate ->
+                                                peerConnection?.addIceCandidate(iceCandidate)
+                                            }
                                         }
                                 }
                             }
@@ -189,6 +186,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                         SimpleSdpObserver(),
                                         awnserSdp
                                     )
+                                    signalingRepository.getIceCandidates().collect { iceCandidate ->
+                                        peerConnection?.addIceCandidate(iceCandidate)
+                                    }
                                 }
 
                             }
@@ -272,8 +272,32 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        super.onCleared()
-        runBlocking { signalingRepository.close() }
+        try {
+            videoCapturer.stopCapture()
+        } catch (e: Exception) {
+            println("Error al detener la captura de video: ${e.message}")
+        }
+
+        videoCapturer.dispose()
+
+        // Liberar la pista de video local si es que la tienes
+        _localVideoTrack.value?.dispose()
+
+        // Cerrar y liberar el PeerConnection
+        peerConnection?.close()
+        peerConnection?.dispose()
+        peerConnection = null
+
+        // Liberar el PeerConnectionFactory
+        peerConnectionFactory.dispose()
+
+        // Liberar el contexto EGL
+        eglBase.release()
+
+        // Cerrar el signaling (Firebase u otro)
+        runBlocking {
+            signalingRepository.close()
+        }
     }
 }
 

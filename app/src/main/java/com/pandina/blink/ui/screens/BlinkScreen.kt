@@ -90,8 +90,9 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
                 val videoTrackState = viewModel.remoteVideoCall.collectAsState(null)
+                val eglBaseContext = viewModel.eglBase.eglBaseContext
                 videoTrackState.value?.let { videoTrack ->
-                    CameraView(videoTrack)
+                    CameraView(videoTrack, eglBaseContext)
                 } ?: run {
                     Text("No video track available", modifier = Modifier.align(Alignment.Center))
                 }
@@ -106,8 +107,9 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
                 val videoTrackState = viewModel.localVideoTrack.collectAsState(null)
+                val eglBaseContext = viewModel.eglBase.eglBaseContext
                 videoTrackState.value?.let { videoTrack ->
-                    CameraView(videoTrack)
+                    CameraView(videoTrack, eglBaseContext)
                 } ?: run {
                     Text("No video track available", modifier = Modifier.align(Alignment.Center))
                 }
@@ -118,7 +120,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
 }
 
 @Composable
-fun CameraView(videoTrack: VideoTrack) {
+fun CameraView(videoTrack: VideoTrack, eglBaseContext: EglBase.Context) {
     val rendererEvents = object : RendererCommon.RendererEvents {
         override fun onFirstFrameRendered() {
             // Lógica para el primer frame renderizado
@@ -132,7 +134,7 @@ fun CameraView(videoTrack: VideoTrack) {
     }
     VideoRenderer(
         videoTrack = videoTrack,
-        eglBaseContext = EglBase.create().eglBaseContext,
+        eglBaseContext = eglBaseContext,
         rendererEvents = rendererEvents,
         modifier = Modifier.fillMaxSize()
     )

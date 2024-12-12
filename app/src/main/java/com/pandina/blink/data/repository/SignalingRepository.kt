@@ -84,10 +84,13 @@ class SignalingRepository(private val userId: String) {
 
     suspend fun close() {
         listener?.remove()
+        firebaseService.deleteIceCandidates()
         roomId?.let { roomId ->
             if (firebaseService.getWaitingRoom() == roomId)
                 firebaseService.remoteWaitingRoom()
             firebaseService.deleteRoom(roomId)
         }
+        roomId = null
+        remoteUserId = null
     }
 }
