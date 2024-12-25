@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
@@ -40,30 +41,64 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val signalingRepository = SignalingRepository(userId)
 
-    val rootEglBase: EglBase = EglBase.create()
-    private lateinit var peerConnectionFactory: PeerConnectionFactory
-    private var peerConnection: PeerConnection? = null
+    var rootEglBase: EglBase = EglBase.create()
 
     private lateinit var videoCapturer: VideoCapturer
+    private val _localAudioTrack = MutableStateFlow<AudioTrack?>(null)
+    val localAudioTrack: StateFlow<AudioTrack?> = _localAudioTrack.asStateFlow()
     private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
     val localVideoTrack: StateFlow<VideoTrack?> = _localVideoTrack.asStateFlow()
 
     private val _remoteVideoCall = MutableStateFlow<VideoTrack?>(null)
     val remoteVideoCall: StateFlow<VideoTrack?> = _remoteVideoCall.asStateFlow()
 
+    private val peerConnectionFactory by lazy { initializePeerConnectionFactory() }
+
+    private val audioSource by lazy { peerConnectionFactory.createAudioSource(audioConstraints)}
+    private val localVideoSource by lazy { peerConnectionFactory.createVideoSource(false) }
+    private var peerConnection: PeerConnection? = null
+
     private var iceCandidatesJob: Job? = null
 
+    private val audioConstraints = MediaConstraints().apply {
+        mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+        mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+        mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+        mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+    }
+    private val iceServers = listOf(
+        PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80").createIceServer(),
+        PeerConnection.IceServer.builder("turn:global.relay.metered.ca:80")
+            .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
+            .createIceServer(),
+        PeerConnection.IceServer.builder("turn:global.relay.metered.ca:80?transport=tcp")
+            .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
+            .createIceServer(),
+        PeerConnection.IceServer.builder("turn:global.relay.metered.ca:443")
+            .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
+            .createIceServer(),
+        PeerConnection.IceServer.builder("turns:global.relay.metered.ca:443?transport=tcp")
+            .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
+            .createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+    )
+
     init {
-        initializePeerConnectionFactory()
+        initPeerConnectionFactory(application)
         initializePeerConnection()
-        initializeLocalVideoTrack()
-        addLocalMediaTracks()
+        startLocalVideoCapture()
         signaling()
     }
 
+    private fun initPeerConnectionFactory(context: Application) {
+        val options = PeerConnectionFactory.InitializationOptions.builder(context)
+            .setEnableInternalTracer(true)
+            .setFieldTrials("WebRTC-H264HighProfile/Enabled/")
+            .createInitializationOptions()
+        PeerConnectionFactory.initialize(options)
+    }
 
-    // WEB RTC CONFIGURATION
-    private fun initializePeerConnectionFactory() {
+    private fun initializePeerConnectionFactory(): PeerConnectionFactory {
         // Esto corre en el hilo principal
         val options = PeerConnectionFactory.InitializationOptions.builder(app)
             .setEnableInternalTracer(true)
@@ -71,9 +106,15 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             .createInitializationOptions()
         PeerConnectionFactory.initialize(options)
 
-        peerConnectionFactory = PeerConnectionFactory.builder()
+        return PeerConnectionFactory.builder()
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(rootEglBase.eglBaseContext))
-            .setVideoEncoderFactory(DefaultVideoEncoderFactory(rootEglBase.eglBaseContext, true, false))
+            .setVideoEncoderFactory(
+                DefaultVideoEncoderFactory(
+                    rootEglBase.eglBaseContext,
+                    true,
+                    true
+                )
+            )
             .setOptions(PeerConnectionFactory.Options().apply {
                 disableEncryption = true      //Change if works with encryption
                 disableNetworkMonitor = true
@@ -83,26 +124,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 
     private fun initializePeerConnection() {
-        val rtcConfig = PeerConnection.RTCConfiguration(
-            listOf(
-                PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80").createIceServer(),
-                PeerConnection.IceServer.builder("turn:global.relay.metered.ca:80")
-                    .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
-                    .createIceServer(),
-                PeerConnection.IceServer.builder("turn:global.relay.metered.ca:80?transport=tcp")
-                    .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
-                    .createIceServer(),
-                PeerConnection.IceServer.builder("turn:global.relay.metered.ca:443")
-                    .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
-                    .createIceServer(),
-                PeerConnection.IceServer.builder("turns:global.relay.metered.ca:443?transport=tcp")
-                    .setUsername("b1820be959f3ea5c0c79e71d").setPassword("kylAgxVKFT90ow1L")
-                    .createIceServer(),
-                PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
-            )
-        )
         peerConnection =
-            peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
+            peerConnectionFactory.createPeerConnection(iceServers, object : PeerConnection.Observer {
                 override fun onIceCandidate(candidate: IceCandidate?) {
                     candidate?.let {
                         viewModelScope.launch {
@@ -113,7 +136,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
                 }
 
-                override fun onTrack(transceiver: RtpTransceiver?) { }
+                override fun onTrack(transceiver: RtpTransceiver?) {}
 
                 override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {}
                 override fun onSignalingChange(newState: PeerConnection.SignalingState?) {}
@@ -142,6 +165,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         PeerConnection.IceConnectionState.CLOSED -> {
+                            //blink()
                             println("ICE Connection: Conexión cerrada")
                         }
 
@@ -154,8 +178,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onIceGatheringChange(newState: PeerConnection.IceGatheringState?) {}
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
                 override fun onAddStream(stream: MediaStream?) {
-                    stream?.videoTracks?.firstOrNull()?.let { _remoteVideoCall.value = it }
+                    stream?.videoTracks?.firstOrNull()?.let {
+                        _remoteVideoCall.value = it
+                    }
                 }
+
                 override fun onRemoveStream(stream: MediaStream?) {}
                 override fun onDataChannel(channel: DataChannel?) {}
                 override fun onRenegotiationNeeded() {}
@@ -165,9 +192,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             }) ?: throw IllegalStateException("Failed to create PeerConnection")
     }
 
-    fun signaling() {
+    private fun signaling() {
         val mediaConstraints = MediaConstraints().apply {
-            //mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
+            mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
         }
         viewModelScope.launch {
@@ -181,7 +208,6 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                     SimpleSdpObserver(), offerSdp
                                 )
                                 viewModelScope.launch {
-
                                     signalingRepository.setOffer(offerSdp.description)
                                         .collect { answerSdp ->
                                             peerConnection?.setRemoteDescription(
@@ -244,27 +270,32 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Video Configuration
-    private fun initializeLocalVideoTrack() {
-        val videoSource = peerConnectionFactory.createVideoSource(false)
-
-        val surfaceTextureHelper = SurfaceTextureHelper.create(Thread.currentThread().name, rootEglBase.eglBaseContext)
+    private fun startLocalVideoCapture() {
+        val surfaceTextureHelper =
+            SurfaceTextureHelper.create(Thread.currentThread().name, rootEglBase.eglBaseContext)
         videoCapturer = createCameraCapturer()
         videoCapturer.initialize(
             surfaceTextureHelper,
             app,
-            videoSource.capturerObserver
+            localVideoSource.capturerObserver
         )
 
         videoCapturer.startCapture(1280, 720, 30)
 
         // Crear la pista de video local
         _localVideoTrack.value =
-            peerConnectionFactory.createVideoTrack(LOCAL_TRACK_ID, videoSource)
+            peerConnectionFactory.createVideoTrack(LOCAL_TRACK_ID, localVideoSource)
+        _localAudioTrack.value =
+            peerConnectionFactory.createAudioTrack(LOCAL_TRACK_ID + "_audio", audioSource);
 
         // Añadir la pista de video al PeerConnection
         _localVideoTrack.value?.let { videoTrack ->
             val mediaStreamTrackList = listOf(videoTrack)
             peerConnection?.addTrack(videoTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
+        }
+        _localAudioTrack.value?.let { audioTrack ->
+            val mediaStreamTrackList = listOf(audioTrack)
+            peerConnection?.addTrack(audioTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
         }
     }
 
@@ -287,32 +318,32 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         throw IllegalStateException("No se encontró ninguna cámara disponible")
     }
 
-    private fun addLocalMediaTracks() {
-        try {
-            /*
-            // Solo añadimos la pista de video
-            _localVideoTrack.value?.let { videoTrack ->
-                peerConnection?.addTrack(videoTrack, listOf("local_stream"))
-            } ?: run {
-                println("Error: LocalVideoTrack no está inicializado")
-            }
-
-            // Configurar y Agregar AudioTrack
-            val audioConstraints = MediaConstraints().apply {
-                mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-                mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-                mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
-                mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
-            }
-            val audioSource = peerConnectionFactory.createAudioSource(audioConstraints)
-            val audioTrack = peerConnectionFactory.createAudioTrack("LOCAL_AUDIO_TRACK", audioSource)
-
-            peerConnection?.addTrack(audioTrack, listOf("local_stream"))*/
-
-            println("Audio y Video Tracks agregados al PeerConnection")
-        } catch (e: Exception) {
-            println("Error al agregar Tracks al PeerConnection: ${e.message}")
+    fun blink() {
+        // Limpiar trabajos de candidatos ICE
+        runBlocking {
+            signalingRepository.close()
         }
+        iceCandidatesJob?.cancel()
+        iceCandidatesJob = null
+
+        // Cerrar y liberar PeerConnection existente
+        peerConnection?.close()
+        peerConnection?.dispose()
+        peerConnection = null
+
+        _remoteVideoCall.value = null
+
+        // Reiniciar el proceso de signaling
+        initializePeerConnection()
+        _localVideoTrack.value?.let { videoTrack ->
+            val mediaStreamTrackList = listOf(videoTrack)
+            peerConnection?.addTrack(videoTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
+        }
+        _localAudioTrack.value?.let { audioTrack ->
+            val mediaStreamTrackList = listOf(audioTrack)
+            peerConnection?.addTrack(audioTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
+        }
+        signaling()
     }
 
     override fun onCleared() {
@@ -346,6 +377,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             signalingRepository.close()
         }
     }
+
+
 }
 
 class SimpleSdpObserver : SdpObserver {

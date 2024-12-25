@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
@@ -60,7 +61,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
             })
     }, bottomBar = {
         Button(
-            onClick = { viewModel.signaling() },
+            onClick = { viewModel.blink() },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
@@ -91,7 +92,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
-                val videoTrackState = viewModel.remoteVideoCall.collectAsState(null)
+                val videoTrackState = viewModel.remoteVideoCall.collectAsStateWithLifecycle()
                 val eglBaseContext = viewModel.rootEglBase.eglBaseContext
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
@@ -126,7 +127,7 @@ fun CameraView(videoTrack: VideoTrack, eglBaseContext: EglBase.Context) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // Crear el SurfaceViewRenderer una sola vez
-    val surfaceViewRenderer = remember {
+    val surfaceViewRenderer = remember(videoTrack) {
         org.webrtc.SurfaceViewRenderer(context).apply {
             init(eglBaseContext, object : RendererCommon.RendererEvents {
                 override fun onFirstFrameRendered() {

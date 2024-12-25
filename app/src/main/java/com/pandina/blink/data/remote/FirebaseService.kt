@@ -127,7 +127,7 @@ class FirebaseService(private val userId: String) {
                     onAnswerReceived(RoomAwnser(awnserSdp = answerSdp, responderId = ownerId))
 
                     // Eliminar la sala [COMENTAR PARA MANTENER LA SALA]
-                    //db.collection(COLLECTION_ROOMS).document(roomId).delete()
+                    db.collection(COLLECTION_ROOMS).document(roomId).delete()
 
                     listener?.remove()
                 }
