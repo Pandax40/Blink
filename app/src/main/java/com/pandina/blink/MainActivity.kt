@@ -22,6 +22,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        System.loadLibrary("jingle_peerconnection_so")
+
         // Solicitar permisos antes de configurar la interfaz
         requestPermissionsIfNeeded()
 

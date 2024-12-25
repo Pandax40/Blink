@@ -92,7 +92,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
                 val videoTrackState = viewModel.remoteVideoCall.collectAsState(null)
-                val eglBaseContext = viewModel.eglBase.eglBaseContext
+                val eglBaseContext = viewModel.rootEglBase.eglBaseContext
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
                 } ?: run {
@@ -109,7 +109,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                     .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp))
             ) {
                 val videoTrackState = viewModel.localVideoTrack.collectAsState(null)
-                val eglBaseContext = viewModel.eglBase.eglBaseContext
+                val eglBaseContext = viewModel.rootEglBase.eglBaseContext
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
                 } ?: run {
