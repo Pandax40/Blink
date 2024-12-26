@@ -1,6 +1,8 @@
 package com.pandina.blink.ui.screens
 
 import android.app.Application
+import android.content.Context
+import android.media.AudioManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.pandina.blink.data.repository.SignalingRepository
@@ -88,6 +90,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         initializePeerConnection()
         startLocalVideoCapture()
         signaling()
+
+        // TODO: Mover una clase especifica para manejar el audio (capa dominio)
+        val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = true
     }
 
     private fun initPeerConnectionFactory(context: Application) {
@@ -102,7 +109,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         // Esto corre en el hilo principal
         val options = PeerConnectionFactory.InitializationOptions.builder(app)
             .setEnableInternalTracer(true)
-            //.setFieldTrials("WebRTC-H264HighProfile/Enabled/")
+            .setFieldTrials("WebRTC-H264HighProfile/Enabled/")
             .createInitializationOptions()
         PeerConnectionFactory.initialize(options)
 
