@@ -17,6 +17,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.pandina.blink.R
 import com.pandina.blink.data.repository.UserRepository
+import com.pandina.blink.ui.viewmodel.HomeViewModel
 
 @Composable
 fun HomeScreen(

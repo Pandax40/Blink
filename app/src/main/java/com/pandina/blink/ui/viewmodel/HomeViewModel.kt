@@ -1,4 +1,4 @@
-package com.pandina.blink.ui.screens
+package com.pandina.blink.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

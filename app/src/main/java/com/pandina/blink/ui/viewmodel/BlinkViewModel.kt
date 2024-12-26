@@ -1,10 +1,9 @@
-package com.pandina.blink.ui.screens
+package com.pandina.blink.ui.viewmodel
 
 import android.app.Application
-import android.content.Context
-import android.media.AudioManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.pandina.blink.domain.AudioController
 import com.pandina.blink.data.repository.SignalingRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +67,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
         mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
     }
+
     private val iceServers = listOf(
         PeerConnection.IceServer.builder("stun:stun.relay.metered.ca:80").createIceServer(),
         PeerConnection.IceServer.builder("turn:global.relay.metered.ca:80")
@@ -85,16 +85,16 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
     )
 
+    private val audioController: AudioController by lazy { AudioController.create(app) }
+
     init {
         initPeerConnectionFactory(application)
         initializePeerConnection()
         startLocalVideoCapture()
         signaling()
 
-        // TODO: Mover una clase especifica para manejar el audio (capa dominio)
-        val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.mode = AudioManager.MODE_NORMAL
-        audioManager.isSpeakerphoneOn = true
+        audioController.selectAudioDevice(AudioController.AudioDevice.SPEAKER_PHONE)
+        audioController.setDefaultAudioDevice(AudioController.AudioDevice.SPEAKER_PHONE)
     }
 
     private fun initPeerConnectionFactory(context: Application) {
