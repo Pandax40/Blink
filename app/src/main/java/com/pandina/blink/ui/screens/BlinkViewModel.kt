@@ -293,7 +293,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         _localVideoTrack.value =
             peerConnectionFactory.createVideoTrack(LOCAL_TRACK_ID, localVideoSource)
         _localAudioTrack.value =
-            peerConnectionFactory.createAudioTrack(LOCAL_TRACK_ID + "_audio", audioSource);
+            peerConnectionFactory.createAudioTrack(LOCAL_TRACK_ID + "_audio", audioSource)
 
         // Añadir la pista de video al PeerConnection
         _localVideoTrack.value?.let { videoTrack ->
