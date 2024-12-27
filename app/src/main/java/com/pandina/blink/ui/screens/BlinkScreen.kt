@@ -142,7 +142,7 @@ fun CameraView(videoTrack: VideoTrack, eglBaseContext: EglBase.Context) {
                 }
             })
             // Opcional: Ajustar la vista espejo si es la cámara frontal
-            setMirror(true)
+            //setMirror(true)
         }
     }
 
