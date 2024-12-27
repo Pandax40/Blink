@@ -25,11 +25,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val client by lazy { Client(application, onAdd, rootEglBase) }
+    private val client by lazy { Client(application, viewModelScope, onAdd, rootEglBase) }
 
-    private val _localAudioTrack = MutableStateFlow(client.localAudioTrack)
-    val localAudioTrack: StateFlow<AudioTrack?> = _localAudioTrack.asStateFlow()
-    private val _localVideoTrack = MutableStateFlow(client.localVideoTrack)
+    private val _localAudioTrack = MutableStateFlow<AudioTrack?>(null)
+    private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
     val localVideoTrack: StateFlow<VideoTrack?> = _localVideoTrack.asStateFlow()
 
     private val _remoteVideoCall = MutableStateFlow<VideoTrack?>(null)
@@ -40,9 +39,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     init {
         audioController.selectAudioDevice(AudioController.AudioDevice.SPEAKER_PHONE)
         audioController.setDefaultAudioDevice(AudioController.AudioDevice.SPEAKER_PHONE)
-        viewModelScope.launch {
-            client.signaling()
-        }
+        _localAudioTrack.value = client.localAudioTrack
+        _localVideoTrack.value = client.localVideoTrack
+        client.signaling()
     }
 
 

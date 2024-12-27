@@ -3,6 +3,9 @@ package com.pandina.blink.domain
 import android.app.Application
 import com.pandina.blink.data.repository.SignalingRepository
 import com.pandina.blink.ui.viewmodel.SimpleSdpObserver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -23,7 +26,7 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import java.util.UUID
 
-class Client(application: Application, private val onAdd: (MediaStream?) -> Unit, private val rootEglBase: EglBase) {
+class Client(application: Application, private val viewModelScope: CoroutineScope, private val onAdd: (MediaStream?) -> Unit, private val rootEglBase: EglBase) {
     private val userId = UUID.randomUUID().toString()
 
     companion object {
@@ -83,6 +86,8 @@ class Client(application: Application, private val onAdd: (MediaStream?) -> Unit
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
     )
 
+    private var iceCandidatesJob: Job? = null
+
     private val observer: PeerConnection.Observer = object : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate?) {
             candidate?.let {
@@ -91,7 +96,6 @@ class Client(application: Application, private val onAdd: (MediaStream?) -> Unit
                 }
                 peerConnection?.addIceCandidate(it)
             }
-
         }
 
         override fun onTrack(transceiver: RtpTransceiver?) {}
@@ -216,69 +220,76 @@ class Client(application: Application, private val onAdd: (MediaStream?) -> Unit
         throw IllegalStateException("No se encontró ninguna cámara disponible")
     }
 
-    suspend fun signaling() {
-        try {
-            val type = signalingRepository.revealSignalingType()
-            if (type == SessionDescription.Type.OFFER) {
-                peerConnection?.createOffer(object : SdpObserver {
-                    override fun onCreateSuccess(offerSdp: SessionDescription?) {
-                        offerSdp?.let {
-                            peerConnection?.setLocalDescription(
-                                SimpleSdpObserver(), offerSdp
-                            )
-                            runBlocking {
-                                signalingRepository.setOffer(offerSdp.description)
-                                    .collect { answerSdp ->
-                                        peerConnection?.setRemoteDescription(
-                                            SimpleSdpObserver(), answerSdp
-                                        )
-                                        startIceCandidateCollection()
-                                    }
-                            }
+     fun signaling() {
+        val type: SessionDescription.Type
+        runBlocking {
+            type = signalingRepository.revealSignalingType()
+        }
+        if (type == SessionDescription.Type.OFFER) {
+            peerConnection?.createOffer(object : SdpObserver {
+                override fun onCreateSuccess(offerSdp: SessionDescription?) {
+                    offerSdp?.let {
+                        peerConnection?.setLocalDescription(
+                            SimpleSdpObserver(), offerSdp
+                        )
+                        viewModelScope.launch {
+                            signalingRepository.setOffer(offerSdp.description)
+                                .collect { answerSdp ->
+                                    peerConnection?.setRemoteDescription(
+                                        SimpleSdpObserver(), answerSdp
+                                    )
+                                    startIceCandidateCollection()
+                                }
                         }
                     }
+                }
 
-                    override fun onSetSuccess() {}
+                override fun onSetSuccess() {}
 
-                    override fun onCreateFailure(error: String?) {
-                        println("Error al crear la oferta: $error")
-                    }
+                override fun onCreateFailure(error: String?) {
+                    println("Error al crear la oferta: $error")
+                }
 
-                    override fun onSetFailure(error: String?) {}
-                }, mediaConstraints)
-            } else {
-                val remoteOffer = signalingRepository.getOffer()
-                peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
-                peerConnection?.createAnswer(object : SdpObserver {
-                    override fun onCreateSuccess(awnserSdp: SessionDescription?) {
-                        awnserSdp?.let {
-                            runBlocking {
-                                signalingRepository.sendAwnser(awnserSdp.description) //Enviar antes para tener el remoteUserId
-                                peerConnection?.setLocalDescription(
-                                    SimpleSdpObserver(), awnserSdp
-                                )
-                                startIceCandidateCollection()
-                            }
-                        }
-                    }
-
-                    override fun onSetSuccess() {}
-
-                    override fun onCreateFailure(error: String?) {
-                        println("Error al crear la respuesta: $error")
-                    }
-
-                    override fun onSetFailure(error: String?) {}
-                }, mediaConstraints)
+                override fun onSetFailure(error: String?) {}
+            }, mediaConstraints)
+        } else {
+            val remoteOffer: SessionDescription?
+            runBlocking {
+                remoteOffer = signalingRepository.getOffer()
             }
-        } catch (e: Exception) {
-            println("Error en el signaling: ${e.message}")
+            peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
+            peerConnection?.createAnswer(object : SdpObserver {
+                override fun onCreateSuccess(awnserSdp: SessionDescription?) {
+                    awnserSdp?.let {
+                        runBlocking {
+                            signalingRepository.sendAwnser(awnserSdp.description) //Enviar antes para tener el remoteUserId
+                            peerConnection?.setLocalDescription(
+                                SimpleSdpObserver(), awnserSdp
+                            )
+                            startIceCandidateCollection()
+                        }
+                    }
+                }
+
+                override fun onSetSuccess() {}
+
+                override fun onCreateFailure(error: String?) {
+                    println("Error al crear la respuesta: $error")
+                }
+
+                override fun onSetFailure(error: String?) {}
+            }, mediaConstraints)
         }
     }
 
-    private suspend fun startIceCandidateCollection() {
-        signalingRepository.getIceCandidates().collect { iceCandidate ->
-            peerConnection?.addIceCandidate(iceCandidate)
+    private fun startIceCandidateCollection() {
+        // Evitar iniciar la recolección más de una vez
+        if (iceCandidatesJob == null) {
+            iceCandidatesJob = viewModelScope.launch {
+                signalingRepository.getIceCandidates().collect { iceCandidate ->
+                    peerConnection?.addIceCandidate(iceCandidate)
+                }
+            }
         }
     }
 }
