@@ -98,7 +98,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
                 } ?: run {
-                    Text("Waiting Users", modifier = Modifier.align(Alignment.Center))
+                    Text("Waiting Blink User", modifier = Modifier.align(Alignment.Center))
                 }
             }
             Spacer(modifier = Modifier.height(18.dp))
@@ -115,7 +115,7 @@ fun BlinkScreen(viewModel: BlinkViewModel = viewModel(), onBackClick: () -> Unit
                 videoTrackState.value?.let { videoTrack ->
                     CameraView(videoTrack, eglBaseContext)
                 } ?: run {
-                    Text("No video track available", modifier = Modifier.align(Alignment.Center))
+                    Text("Camara NOT found", modifier = Modifier.align(Alignment.Center))
                 }
 
             }

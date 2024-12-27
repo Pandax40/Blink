@@ -26,7 +26,7 @@ import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
 import java.util.UUID
 
-class Client(application: Application, private val viewModelScope: CoroutineScope, private val onAdd: (MediaStream?) -> Unit, private val rootEglBase: EglBase) {
+class Client(application: Application, private val viewModelScope: CoroutineScope, private val onAdd: (MediaStream?) -> Unit, private val onClose: () -> Unit, private val rootEglBase: EglBase) {
     private val userId = UUID.randomUUID().toString()
 
     companion object {
@@ -36,10 +36,17 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
 
     private val signalingRepository = SignalingRepository(userId)
 
-    private val peerConnectionFactory by lazy { initializePeerConnectionFactory(application) }
+    private val peerConnectionFactory by lazy {
+        initializePeerConnectionFactory(application)
+    }
 
-    private val localVideoSource by lazy { peerConnectionFactory.createVideoSource(false) }
-    private val audioSource by lazy { peerConnectionFactory.createAudioSource(audioConstraints)}
+    private val localVideoSource by lazy {
+        peerConnectionFactory.createVideoSource(false)
+    }
+
+    private val audioSource by lazy {
+        peerConnectionFactory.createAudioSource(audioConstraints)
+    }
 
     private lateinit var videoCapturer: VideoCapturer
 
@@ -51,12 +58,7 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
         peerConnectionFactory.createVideoTrack(LOCAL_TRACK_ID, localVideoSource)
     }
 
-    private val peerConnection by lazy {
-        peerConnectionFactory.createPeerConnection(iceServers, observer)?.apply {
-            addTrack(localVideoTrack, listOf(this).map { LOCAL_STREAM_ID })
-            addTrack(localAudioTrack, listOf(this).map { LOCAL_STREAM_ID })
-        }
-    }
+    private lateinit var peerConnection: PeerConnection
 
     private val audioConstraints = MediaConstraints().apply {
         mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
@@ -94,7 +96,7 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
                 runBlocking {
                     signalingRepository.sendIceCandidate(it)
                 }
-                peerConnection?.addIceCandidate(it)
+                peerConnection.addIceCandidate(it)
             }
         }
 
@@ -119,15 +121,17 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
                 }
 
                 PeerConnection.IceConnectionState.FAILED -> {
+                    onClose()
                     println("ICE Connection: La conexión ha fallado")
                 }
 
                 PeerConnection.IceConnectionState.DISCONNECTED -> {
+                    onClose()
                     println("ICE Connection: Conexión perdida")
                 }
 
                 PeerConnection.IceConnectionState.CLOSED -> {
-                    //blink()
+                    onClose()
                     println("ICE Connection: Conexión cerrada")
                 }
 
@@ -152,7 +156,6 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
     }
 
     init {
-        initPeerConnectionFactory(application)
         startLocalVideoCapture(application)
     }
 
@@ -165,12 +168,7 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
     }
 
     private fun initializePeerConnectionFactory(application: Application): PeerConnectionFactory {
-        // Esto corre en el hilo principal
-        val options = PeerConnectionFactory.InitializationOptions.builder(application)
-            .setEnableInternalTracer(true)
-            .setFieldTrials("WebRTC-H264HighProfile/Enabled/")
-            .createInitializationOptions()
-        PeerConnectionFactory.initialize(options)
+        initPeerConnectionFactory(application)
 
         return PeerConnectionFactory.builder()
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(rootEglBase.eglBaseContext))
@@ -186,6 +184,14 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
                 disableNetworkMonitor = true
             })
             .createPeerConnectionFactory()
+    }
+
+    private fun initializePeerConnection() {
+        peerConnectionFactory.createPeerConnection(iceServers, observer)?.let {
+            peerConnection = it
+        }
+        peerConnection.addTrack(localVideoTrack, listOf(this).map { LOCAL_STREAM_ID })
+        peerConnection.addTrack(localAudioTrack, listOf(this).map { LOCAL_STREAM_ID })
     }
 
     private fun startLocalVideoCapture(application: Application) {
@@ -220,22 +226,37 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
         throw IllegalStateException("No se encontró ninguna cámara disponible")
     }
 
-     fun signaling() {
+    fun signaling() {
+        iceCandidatesJob?.cancel()
+        iceCandidatesJob = null
+
+        runBlocking {
+            signalingRepository.close()
+        }
+
+        try{
+            peerConnection.close()
+            peerConnection.dispose()
+        } catch (e: Exception) {
+            println("Error al cerrar la conexión: ${e.message}")
+        }
+        initializePeerConnection()
+
         val type: SessionDescription.Type
         runBlocking {
             type = signalingRepository.revealSignalingType()
         }
         if (type == SessionDescription.Type.OFFER) {
-            peerConnection?.createOffer(object : SdpObserver {
+            peerConnection.createOffer(object : SdpObserver {
                 override fun onCreateSuccess(offerSdp: SessionDescription?) {
                     offerSdp?.let {
-                        peerConnection?.setLocalDescription(
+                        peerConnection.setLocalDescription(
                             SimpleSdpObserver(), offerSdp
                         )
                         viewModelScope.launch {
                             signalingRepository.setOffer(offerSdp.description)
                                 .collect { answerSdp ->
-                                    peerConnection?.setRemoteDescription(
+                                    peerConnection.setRemoteDescription(
                                         SimpleSdpObserver(), answerSdp
                                     )
                                     startIceCandidateCollection()
@@ -257,13 +278,13 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
             runBlocking {
                 remoteOffer = signalingRepository.getOffer()
             }
-            peerConnection?.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
-            peerConnection?.createAnswer(object : SdpObserver {
+            peerConnection.setRemoteDescription(SimpleSdpObserver(), remoteOffer)
+            peerConnection.createAnswer(object : SdpObserver {
                 override fun onCreateSuccess(awnserSdp: SessionDescription?) {
                     awnserSdp?.let {
                         runBlocking {
                             signalingRepository.sendAwnser(awnserSdp.description) //Enviar antes para tener el remoteUserId
-                            peerConnection?.setLocalDescription(
+                            peerConnection.setLocalDescription(
                                 SimpleSdpObserver(), awnserSdp
                             )
                             startIceCandidateCollection()
@@ -287,9 +308,34 @@ class Client(application: Application, private val viewModelScope: CoroutineScop
         if (iceCandidatesJob == null) {
             iceCandidatesJob = viewModelScope.launch {
                 signalingRepository.getIceCandidates().collect { iceCandidate ->
-                    peerConnection?.addIceCandidate(iceCandidate)
+                    peerConnection.addIceCandidate(iceCandidate)
                 }
             }
         }
+    }
+
+    fun close() {
+        iceCandidatesJob?.cancel()
+        iceCandidatesJob = null
+
+        runBlocking {
+            signalingRepository.close()
+        }
+
+        try {
+            videoCapturer.stopCapture()
+            videoCapturer.dispose()
+        } catch (e: Exception) {
+            println("Error al detener la captura de video: ${e.message}")
+        }
+
+        try {
+            peerConnection.close()
+            peerConnection.dispose()
+        } catch (e: Exception) {
+            println("Error al cerrar la conexión: ${e.message}")
+        }
+
+        rootEglBase.release()
     }
 }

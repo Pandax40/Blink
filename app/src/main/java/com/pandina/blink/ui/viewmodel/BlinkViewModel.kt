@@ -8,7 +8,6 @@ import com.pandina.blink.domain.Client
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import org.webrtc.AudioTrack
 import org.webrtc.EglBase
 import org.webrtc.MediaStream
@@ -25,7 +24,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val client by lazy { Client(application, viewModelScope, onAdd, rootEglBase) }
+    private val onClose: () -> Unit = {
+        if(blinkOnClose)
+            blink()
+    }
+
+    private val client by lazy { Client(application, viewModelScope, onAdd, onClose, rootEglBase) }
 
     private val _localAudioTrack = MutableStateFlow<AudioTrack?>(null)
     private val _localVideoTrack = MutableStateFlow<VideoTrack?>(null)
@@ -35,6 +39,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     val remoteVideoCall: StateFlow<VideoTrack?> = _remoteVideoCall.asStateFlow()
 
     private val audioController: AudioController by lazy { AudioController.create(application) }
+    private var blinkOnClose: Boolean = true
 
     init {
         audioController.selectAudioDevice(AudioController.AudioDevice.SPEAKER_PHONE)
@@ -46,63 +51,16 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 
     fun blink() {
-        // Limpiar trabajos de candidatos ICE
-        /*runBlocking {
-            signalingRepository.close()
-        }
-        iceCandidatesJob?.cancel()
-        iceCandidatesJob = null
-
-        // Cerrar y liberar PeerConnection existente
-        peerConnection?.close()
-        peerConnection?.dispose()
-        peerConnection = null
-
+        blinkOnClose = false
         _remoteVideoCall.value = null
-
-        // Reiniciar el proceso de signaling
-        initializePeerConnection()
-        _localVideoTrack.value?.let { videoTrack ->
-            val mediaStreamTrackList = listOf(videoTrack)
-            peerConnection?.addTrack(videoTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
-        }
-        _localAudioTrack.value?.let { audioTrack ->
-            val mediaStreamTrackList = listOf(audioTrack)
-            peerConnection?.addTrack(audioTrack, mediaStreamTrackList.map { LOCAL_STREAM_ID })
-        }
-        signaling()*/
+        client.signaling()
+        blinkOnClose = true
     }
 
     override fun onCleared() {
-        /*try {
-            videoCapturer.stopCapture()
-        } catch (e: Exception) {
-            println("Error al detener la captura de video: ${e.message}")
-        }
-
-        iceCandidatesJob?.cancel()
-        iceCandidatesJob = null
-
-        videoCapturer.dispose()
-
-        // Liberar la pista de video local si es que la tienes
-        _localVideoTrack.value?.dispose()
-
-        // Cerrar y liberar el PeerConnection
-        peerConnection?.close()
-        peerConnection?.dispose()
-        peerConnection = null
-
-        // Liberar el PeerConnectionFactory
-        peerConnectionFactory.dispose()
-
-        // Liberar el contexto EGL
-        rootEglBase.release()
-
-        // Cerrar el signaling (Firebase u otro)
-        runBlocking {
-            signalingRepository.close()
-        }*/
+        _remoteVideoCall.value = null
+        _localVideoTrack.value = null
+        client.close()
     }
 }
 
