@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -17,14 +18,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.pandina.blink.R
 import com.pandina.blink.data.repository.UserRepository
-import com.pandina.blink.ui.viewmodel.HomeViewModel
 
 @Composable
-fun HomeScreen(
-    homeViewModel: HomeViewModel = HomeViewModel(UserRepository()), onBlinkClick: () -> Unit
-) {
-    // Observe state from ViewModel
-    val numUsers = homeViewModel.connectedUsers.collectAsState()
+fun HomeScreen(onBlinkClick: () -> Unit) {
     Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
         Column(
             modifier = Modifier
@@ -56,16 +52,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Connected Users
-            /*
-            Text(
-                text = "Connected Users: ${numUsers.value}",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )*/
         }
     }
 }
