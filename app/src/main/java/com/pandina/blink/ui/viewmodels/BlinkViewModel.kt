@@ -1,4 +1,4 @@
-package com.pandina.blink.ui.viewmodel
+package com.pandina.blink.ui.viewmodels
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel

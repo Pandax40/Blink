@@ -2,7 +2,7 @@ package com.pandina.blink.domain
 
 import android.app.Application
 import com.pandina.blink.data.repository.SignalingRepository
-import com.pandina.blink.ui.viewmodel.SimpleSdpObserver
+import com.pandina.blink.ui.viewmodels.SimpleSdpObserver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
