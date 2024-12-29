@@ -38,30 +38,43 @@ cd Blink
 2. Habilita **Firestore** en modo seguro y asegúrate de añadir las siguientes reglas:
 ```txt
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // Regla para la colección waitingRoom
     match /waitingRoom/current {
-      allow read: if request.auth != null; // Solo usuarios autenticados pueden leer
-      allow write: if request.auth != null && request.resource.data.keys().hasOnly(['roomId']); 
+    	// Solo usuarios autenticados pueden leer
+      allow read: if request.auth != null;
+      // Solo usuarios autenticados pueden escribir y solo el campo roomId es permitido
+      allow write: if request.auth != null && request.resource.data.keys().hasOnly(['roomId']);
+      // Solo usuarios autenticados pueden borrar el waitingRoom
+      allow delete: if request.auth != null
     }
 
     // Regla para la colección rooms
     match /rooms/{roomId} {
-      allow read: if request.auth != null; 
+    	// Solo usuarios autenticados pueden leer las salas
+      allow read: if request.auth != null;
+      // Solo usuarios autenticados pueden crear salas con los campos offer y answer
       allow create: if request.auth != null && request.resource.data.keys().hasOnly(['offer', 'answer']);
       allow update: if request.auth != null && (
+        // Los campos válidos son offer o answer
         (request.resource.data.offer is map && request.resource.data.offer.keys().hasOnly(['sdp', 'ownerId'])) ||
         (request.resource.data.answer is map && request.resource.data.answer.keys().hasOnly(['sdp', 'responderId']))
       );
-      allow delete: if request.auth != null; 
+      // Permitir que usuarios autenticados eliminen salas
+      allow delete: if request.auth != null;
     }
 
     // Regla para la colección iceCandidates
     match /iceCandidates/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId; 
+    	// Un usuario solo puede leer todos los candidatos
+      allow read: if request.auth != null; 
+      // Un usuario solo puede escribir sus propios candidatos
       allow write: if request.auth != null && request.auth.uid == userId; 
+      // Un usuario solo puede borrar sus propios candidatos
+      allow delete: if request.auth != null  && request.auth.uid == userId; 
     }
   }
 }
