@@ -1,18 +1,26 @@
 package com.pandina.blink.data.remote
 
 import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import com.pandina.blink.data.model.RoomAwnser
 import com.pandina.blink.data.model.RoomOffer
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.webrtc.SessionDescription
 import java.util.UUID
 
 
-class FirebaseService(private val userId: String) {
+class FirebaseService {
     private val db = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
+    private val userId by lazy {
+        runBlocking {
+            auth.signInAnonymously().await().user?.uid ?: throw IllegalStateException("User ID not found")
+        }
+    }
 
     companion object {
         private const val COLLECTION_ROOMS = "rooms"
@@ -174,7 +182,7 @@ class FirebaseService(private val userId: String) {
     }
 
     suspend fun addIceCandidate(
-        userId: String, candidate: String, sdpMid: String, sdpMLineIndex: Int
+        candidate: String, sdpMid: String, sdpMLineIndex: Int
     ) {
         try {
             // Crear un nuevo mapa con los datos del ICE Candidate

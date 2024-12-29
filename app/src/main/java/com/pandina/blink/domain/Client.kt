@@ -24,17 +24,14 @@ import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.VideoCapturer
 import org.webrtc.VideoTrack
-import java.util.UUID
 
 class Client(application: Application, private val viewModelScope: CoroutineScope, private val onAdd: (MediaStream?) -> Unit, private val onClose: () -> Unit, private val rootEglBase: EglBase) {
-    private val userId = UUID.randomUUID().toString()
-
     companion object {
         private const val LOCAL_TRACK_ID = "local_track"
         private const val LOCAL_STREAM_ID = "local_track"
     }
 
-    private val signalingRepository = SignalingRepository(userId)
+    private val signalingRepository = SignalingRepository()
 
     private val peerConnectionFactory by lazy {
         initializePeerConnectionFactory(application)

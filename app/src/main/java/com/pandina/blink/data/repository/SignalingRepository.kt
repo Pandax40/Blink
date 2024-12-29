@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.callbackFlow
 import org.webrtc.IceCandidate
 import org.webrtc.SessionDescription
 
-class SignalingRepository(private val userId: String) {
-    private val firebaseService: FirebaseService = FirebaseService(userId)
+class SignalingRepository {
+    private val firebaseService: FirebaseService = FirebaseService()
     private var listener: ListenerRegistration? = null
     private var roomId: String? = null
     private var remoteUserId: String? = null
@@ -75,7 +75,6 @@ class SignalingRepository(private val userId: String) {
 
     suspend fun sendIceCandidate(candidate: IceCandidate) {
         firebaseService.addIceCandidate(
-            userId,
             candidate.sdp,
             candidate.sdpMid,
             candidate.sdpMLineIndex
