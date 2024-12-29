@@ -16,9 +16,11 @@ import java.util.UUID
 class FirebaseService {
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
-    private val userId by lazy {
+    private var userId: String
+
+    init {
         runBlocking {
-            auth.signInAnonymously().await().user?.uid ?: throw IllegalStateException("User ID not found")
+            userId = auth.signInAnonymously().await().user?.uid ?: throw IllegalStateException("User ID not found")
         }
     }
 
