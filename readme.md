@@ -21,6 +21,7 @@ Blink es una aplicación móvil de chat uno a uno, similar a Omegle, que conecta
 - **Streaming de video y voz**: WebRTC (GetStream API).
 - **Servidor de señalización**: Firebase Firestore.
 - **UI**: Jetpack Compose.
+- **Autenticación**: Firebase Authentication (Autenticación Anónima).
 
 ## Instalación y configuración
 
@@ -31,11 +32,44 @@ git clone https://github.com/Pandax40/Blink.git
 cd Blink
 ```
 
-### 2. Configurar el entorno
+### 2. Configurar Firebase
 
-1. Crea un proyecto en Firebase y habilita Firestore.
-2. Configura las reglas de Firestore para permitir acceso seguro.
-3. Descarga el archivo `google-services.json` y colócalo en el directorio `app` de tu proyecto.
+1. Crea un proyecto en [Firebase](https://console.firebase.google.com/)
+2. Habilita **Firestore** en modo seguro y asegúrate de añadir las siguientes reglas:
+```txt
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Regla para la colección waitingRoom
+    match /waitingRoom/current {
+      allow read: if request.auth != null; // Solo usuarios autenticados pueden leer
+      allow write: if request.auth != null && request.resource.data.keys().hasOnly(['roomId']); 
+    }
+
+    // Regla para la colección rooms
+    match /rooms/{roomId} {
+      allow read: if request.auth != null; 
+      allow create: if request.auth != null && request.resource.data.keys().hasOnly(['offer', 'answer']);
+      allow update: if request.auth != null && (
+        (request.resource.data.offer is map && request.resource.data.offer.keys().hasOnly(['sdp', 'ownerId'])) ||
+        (request.resource.data.answer is map && request.resource.data.answer.keys().hasOnly(['sdp', 'responderId']))
+      );
+      allow delete: if request.auth != null; 
+    }
+
+    // Regla para la colección iceCandidates
+    match /iceCandidates/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId; 
+      allow write: if request.auth != null && request.auth.uid == userId; 
+    }
+  }
+}
+```
+3. Habilita **Autenticación Anónima** en la consola de Firebase:
+   - Ve a **Authentication > Métodos de inicio de sesión**.
+   - Activa la opción **Anónimo**.
+4. Descarga el archivo `google-services.json` desde Firebase y colócalo en el directorio `app` de tu proyecto.
 
 ### 3. Configurar WebRTC
 
@@ -56,15 +90,15 @@ private val iceServers = listOf(
 
 1. Abre el proyecto en Android Studio.
 2. Sincroniza las dependencias de Gradle.
-3. Compila y empaqueta la aplicación.
-4. Distribuye la aplicación.
+3. Compila y ejecuta la aplicación.
 
 ## Uso
 
-1. Al iniciar la aplicación, verás un botón de **Blink**.
-2. Haz clic en el botón para conectarte con otro usuario aleatorio.
-3. Puedes finalizar la sesión y buscar otro usuario haciendo clic en **Blink Again**.
-4. Finalmente puedes salir de la session volviendo al menu principal desde el boton superior izquierdo.
+1. Al iniciar la aplicación, el usuario será autenticado automáticamente mediante **Autenticación Anónima**.
+2. Verás un botón de **Blink** en la pantalla principal.
+3. Haz clic en el botón para conectarte con otro usuario aleatorio.
+4. Puedes finalizar la sesión y buscar otro usuario haciendo clic en **Blink Again**.
+5. Si deseas salir de la sesión, utiliza el botón superior izquierdo para regresar al menú principal.
 
 ## Estructura del proyecto
 
